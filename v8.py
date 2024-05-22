@@ -2,32 +2,36 @@ import os
 import requests
 import random
 import base64
-import json
-from datetime import datetime
 
 def get_random_file_content(token):
     headers = {
         "Authorization": f"token {token}"
     }
+    # Tìm một repository ngẫu nhiên có chứa từ khoá "Shell"
     search_url = "https://api.github.com/search/repositories?q=README"
     response = requests.get(search_url, headers=headers)
     if response.status_code == 200:
         repositories = response.json()['items']
         if repositories:
+            # Chọn một repository ngẫu nhiên
             random_repo = random.choice(repositories)
             repo_owner = random_repo['owner']['login']
             repo_name = random_repo['name']
+            # Lấy danh sách các tệp trong repository này
             contents_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents"
             response = requests.get(contents_url, headers=headers)
             if response.status_code == 200:
                 files = response.json()
                 if files:
+                    # Chọn một tệp ngẫu nhiên
                     random_file_info = random.choice(files)
                     file_path = random_file_info['path']
+                    # Lấy thông tin về tệp
                     content_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file_path}"
                     response = requests.get(content_url, headers=headers)
                     if response.status_code == 200:
                         file_info = response.json()
+                        # Kiểm tra xem tệp có phải là văn bản không
                         if file_info['type'] == 'file' and file_info['encoding'] == 'base64':
                             content = base64.b64decode(file_info['content']).decode()
                             return content
@@ -87,112 +91,56 @@ def get_file_sha(token, repository_owner, repository_name, file_path):
         print("Failed to get file SHA. Status code:", response.status_code)
         return None
 
-def create_commit_with_date(token, username, email, repository_owner, repository_name, commit_message, content, sha, date):
-    url = f"https://api.github.com/repos/{repository_owner}/{repository_name}/git/commits"
+def create_commit(token, username, email, repository_owner, repository_name, commit_message, content, sha):
+    url = f"https://api.github.com/repos/{repository_owner}/{repository_name}/contents/README.md"
 
+    # Mã hóa nội dung thành Base64
     content_encoded = base64.b64encode(content.encode()).decode()
+
+    commit_data = {
+        "message": commit_message,
+        "content": content_encoded,
+        "branch": "main",
+        "sha": sha  # Thêm sha vào yêu cầu
+    }
 
     headers = {
         "Authorization": f"token {token}"
     }
 
-    # Create a blob for the file content
-    blob_data = {
-        "content": content_encoded,
-        "encoding": "base64"
-    }
-    blob_url = f"https://api.github.com/repos/{repository_owner}/{repository_name}/git/blobs"
-    blob_response = requests.post(blob_url, headers=headers, json=blob_data)
-    if blob_response.status_code != 201:
-        print("Failed to create blob. Status code:", blob_response.status_code)
-        return
+    response = requests.put(url, headers=headers, json=commit_data)
 
-    blob_sha = blob_response.json()['sha']
-
-    # Get the current reference of the branch
-    ref_url = f"https://api.github.com/repos/{repository_owner}/{repository_name}/git/refs/heads/main"
-    ref_response = requests.get(ref_url, headers=headers)
-    if ref_response.status_code != 200:
-        print("Failed to get branch reference. Status code:", ref_response.status_code)
-        return
-
-    base_commit_sha = ref_response.json()['object']['sha']
-
-    # Get the tree of the base commit
-    tree_url = f"https://api.github.com/repos/{repository_owner}/{repository_name}/git/trees/{base_commit_sha}"
-    tree_response = requests.get(tree_url, headers=headers)
-    if tree_response.status_code != 200:
-        print("Failed to get tree. Status code:", tree_response.status_code)
-        return
-
-    base_tree_sha = tree_response.json()['sha']
-
-    # Create a new tree with the updated file
-    tree_data = {
-        "base_tree": base_tree_sha,
-        "tree": [
-            {
-                "path": "README.md",
-                "mode": "100644",
-                "type": "blob",
-                "sha": blob_sha
-            }
-        ]
-    }
-    new_tree_url = f"https://api.github.com/repos/{repository_owner}/{repository_name}/git/trees"
-    new_tree_response = requests.post(new_tree_url, headers=headers, json=tree_data)
-    if new_tree_response.status_code != 201:
-        print("Failed to create new tree. Status code:", new_tree_response.status_code)
-        return
-
-    new_tree_sha = new_tree_response.json()['sha']
-
-    # Create a new commit with the specified date
-    commit_data = {
-        "message": commit_message,
-        "author": {
-            "name": username,
-            "email": email,
-            "date": date
-        },
-        "parents": [base_commit_sha],
-        "tree": new_tree_sha
-    }
-    commit_response = requests.post(url, headers=headers, json=commit_data)
-    if commit_response.status_code != 201:
-        print("Failed to create commit. Status code:", commit_response.status_code)
-        return
-
-    new_commit_sha = commit_response.json()['sha']
-
-    # Update the reference of the branch to point to the new commit
-    update_ref_data = {
-        "sha": new_commit_sha,
-        "force": True
-    }
-    update_ref_response = requests.patch(ref_url, headers=headers, json=update_ref_data)
-    if update_ref_response.status_code == 200:
+    if response.status_code == 201:
         print("Commit created successfully!")
     else:
-        print("Failed to update branch reference. Status code:", update_ref_response.status_code)
+        print("Failed to create commit. Status code:", response.status_code)
+        print("Response:", response.text)
 
 def main():
+    # Lấy PERSONAL_ACCESS_TOKEN từ biến môi trường
     personal_access_token = os.environ.get('PERSONAL_ACCESS_TOKEN')
     if personal_access_token:
+        # Lấy nội dung của một tệp ngẫu nhiên từ một repository ngẫu nhiên thỏa mãn điều kiện tìm kiếm là "Shell"
         random_file_content = get_random_file_content(personal_access_token)
         if random_file_content:
+            # Lấy thông tin người dùng
             username, email = get_user_info(personal_access_token)
             if username and email:
+                # Lấy danh sách các repository của người dùng
                 repo_names = get_user_repos(personal_access_token)
                 if repo_names:
+                    # Chọn một repository ngẫu nhiên từ danh sách
                     repository_name = random.choice(repo_names)
+
+                    # Lấy sha của phiên bản hiện tại của README.md
                     file_path = "README.md"
                     file_sha = get_file_sha(personal_access_token, username, repository_name, file_path)
-                    if file_sha:
-                        commit_message = "Update README.md"
-                        commit_date = "2023-02-02T12:00:00Z"  # Định dạng ISO 8601
 
-                        create_commit_with_date(personal_access_token, username, email, username, repository_name, commit_message, random_file_content, file_sha, commit_date)
+                    if file_sha:
+                        # Tạo commit mới với nội dung mới và sha của commit trước đó
+                        commit_message = "Update README.md"  # Bạn có thể thay đổi commit message theo nhu cầu
+
+                        create_commit(personal_access_token, username, email, username, repository_name, commit_message, random_file_content, file_sha)
                     else:
                         print("Failed to get file SHA.")
                 else:
