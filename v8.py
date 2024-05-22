@@ -100,6 +100,7 @@ def create_commit(token, username, email, repository_owner, repository_name, com
     commit_data = {
         "message": commit_message,
         "content": content_encoded,
+        "date": 20 day ago,
         "branch": "main",
         "sha": sha  # Thêm sha vào yêu cầu
     }
