@@ -190,7 +190,7 @@ def main():
                     file_sha = get_file_sha(personal_access_token, username, repository_name, file_path)
                     if file_sha:
                         commit_message = "Update README.md"
-                        commit_date = "2023-01-01T12:00:00Z"  # Định dạng ISO 8601
+                        commit_date = "2023-02-02T12:00:00Z"  # Định dạng ISO 8601
 
                         create_commit_with_date(personal_access_token, username, email, username, repository_name, commit_message, random_file_content, file_sha, commit_date)
                     else:
